@@ -23,6 +23,7 @@ namespace WebhookController {
         [UI] private Button sendButton = null;
         [UI] private Button reloadButton = null;
         [UI] private ComboBox hookComboBox = null;
+        [UI] private ComboBox profileComboBox = null;
         [UI] private Entry messageEntry = null;
         [UI] private Button clearHistoryButton = null;
         [UI] private Button pollButton = null;
@@ -65,9 +66,12 @@ namespace WebhookController {
                 Console.WriteLine(a.Event.Key.ToString());
                 if (a.Event.Key is Key.ISO_Enter or Key.Key_3270_Enter or Key.KP_Enter) SendMessage(o, a);
             };
-            customRadioButton.Toggled += (o, a) => {
+            customRadioButton.Toggled += (_, _) => {
                 customNickEntry.Sensitive = customRadioButton.Active;
                 customAvatarEntry.Sensitive = customRadioButton.Active;
+            };
+            presetRadioButton.Toggled += (_, _) => {
+                profileComboBox.Sensitive = presetRadioButton.Active;
             };
             clearHistoryButton.Clicked += (_, _) => messageStore.Clear();
         }
@@ -75,8 +79,10 @@ namespace WebhookController {
         private async void SendMessage(object sender, EventArgs e) {
             try {
                 hookComboBox.GetActiveIter(out TreeIter iter);
+                profileComboBox.GetActiveIter(out TreeIter profiter);
                 string url = hookStore.GetValue(iter, 1) as string;
-                string name = customRadioButton.Active ? customNickEntry.Text : hookStore.GetValue(iter, 0) as string;
+                string name = customRadioButton.Active ? customNickEntry.Text : 
+                    presetRadioButton.Active ? profileStore.GetValue(profiter, 0) as string : hookStore.GetValue(iter, 0) as string;
                 string msg = messageEntry.Text;
                 if (string.IsNullOrWhiteSpace(msg)) {
                     infobarIcon.Stock = "gtk-dialog-warning";
@@ -88,12 +94,17 @@ namespace WebhookController {
                 messageEntry.Text = "";
                 Console.WriteLine($"Sending message \"{msg}\" to {url}");
                 object payload = customRadioButton.Active ? new {
-                    content = msg,
-                    username = customNickEntry.Text,
-                    avatar_url = customAvatarEntry.Text
-                } : new {
-                    content = msg,
-                };
+                        content = msg,
+                        username = customNickEntry.Text,
+                        avatar_url = customAvatarEntry.Text
+                    } : 
+                    presetRadioButton.Active ? new {
+                        content = msg,
+                        username = profileStore.GetValue(profiter, 0) as string,
+                        avatar_url = profileStore.GetValue(profiter, 1) as string
+                    } :new {
+                        content = msg,
+                    };
                 var resp = await http.PostAsync(url, new StringContent(JsonConvert.SerializeObject(payload), Encoding.Unicode, "application/json"));
                 if (!resp.IsSuccessStatusCode) {
                     infobarIcon.Stock = "gtk-dialog-error";
@@ -122,6 +133,7 @@ namespace WebhookController {
             };
             var shtik = JsonConvert.DeserializeAnonymousType(jeyson, template);
             Webhooks.Clear();
+            Profiles.Clear();
             hookStore.Clear();
             if (shtik.Hooks.Length == 0) {
                 infobarIcon.Stock = "gtk-dialog-warning";
@@ -139,6 +151,20 @@ namespace WebhookController {
                     hookStore.SetValue(iter, 1, url!.ToString());
                 }
                 hookComboBox.Active = 0;
+            }
+            if (shtik.Profiles.Length == 0) {
+                presetRadioButton.Sensitive = false;
+            } else {
+                foreach (var hook in shtik.Profiles) {
+                    if (hook is not JObject obj || !obj.TryGetValue("name", out var name) ||
+                        !obj.TryGetValue("avatar", out var avatar)) continue;
+                    Profiles.Add((name!.ToString(), avatar!.ToString()));
+                    var iter = profileStore.Append();
+                    profileStore.SetValue(iter, 0, name!.ToString());
+                    profileStore.SetValue(iter, 1, avatar!.ToString());
+                }
+                presetRadioButton.Sensitive = true;
+                profileComboBox.Active = 0;
             }
         }
 
