@@ -63,7 +63,6 @@ namespace WebhookController {
             reloadButton.Clicked += (_, _) => LoadConfig();
             sendButton.Clicked += SendMessage;
             messageEntry.KeyPressEvent += (o, a) => {
-                Console.WriteLine(a.Event.Key.ToString());
                 if (a.Event.Key is Key.ISO_Enter or Key.Key_3270_Enter or Key.KP_Enter) SendMessage(o, a);
             };
             customRadioButton.Toggled += (_, _) => {
